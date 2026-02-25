@@ -36,6 +36,19 @@ function ENT:Initialize()
 
 	-- Apply player config based on model
 	self.PlayerConfig = self:GetMediaPlayerConfig()
+
+	timer.Simple(0, function()
+		if not IsValid(self) then return end
+		if self.CPPIGetOwner and self:CPPIGetOwner() and self:CPPIGetOwner():IsPlayer() then
+			-- Attach mixin methods to self
+			for k, v in pairs(DestructibleMixin) do self[k] = v end
+			self.HealthAmount = RPrint.HpModifiers[self:GetClass()] or 1500
+			self.CanCatchFire = true
+			self.CanStartSparking = true
+			self.ExplodeOnDestruct = true
+			self:InitializeDestructible()
+		end
+	end)
 end
 
 function ENT:SetupDataTables()
