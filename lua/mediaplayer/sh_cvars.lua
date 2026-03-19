@@ -3,7 +3,7 @@ MediaPlayer.Cvars = {}
 MediaPlayer.Cvars.Debug = CreateConVar( "mediaplayer_debug", 0, FCVAR_DONTRECORD, "Enables media player debug mode; logs a bunch of actions into the console." )
 MediaPlayer.DEBUG = MediaPlayer.Cvars.Debug:GetBool()
 cvars.AddChangeCallback( "mediaplayer_debug", function(name, old, new)
-	MediaPlayer.DEBUG = new == 1
+	MediaPlayer.DEBUG = tobool(new)
 end)
 
 MediaPlayer.Cvars.AllowWebpages = CreateConVar( "mediaplayer_allow_webpages", 0, {
@@ -28,5 +28,6 @@ if CLIENT then
 	MediaPlayer.Cvars.DrawThumbnails = CreateClientConVar( "mediaplayer_draw_thumbnails", 0, true, false )
 	MediaPlayer.Cvars.ProximityMin = CreateClientConVar( "mediaplayer_proximity_min", 100, true, false )
 	MediaPlayer.Cvars.ProximityMax = CreateClientConVar( "mediaplayer_proximity_max", 1000, true, false )
+	MediaPlayer.Cvars.LanguageOverride = CreateClientConVar( "mediaplayer_language", "", true, false )
 
 end

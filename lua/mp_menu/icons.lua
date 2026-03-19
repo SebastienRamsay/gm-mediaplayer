@@ -22,8 +22,8 @@ spritesheet.Register {
 	mpIcon( "mp-thumbs-up",			0, 0, 18, 21 ),
 	mpIcon( "mp-thumbs-down",		1, 0, 18, 21 ),
 	mpIcon( "mp-delete",			2, 0, 15, 20 ),
-	mpIcon( "mp-favorite",			3, 0, 21, 21 ),
-	mpIcon( "mp-favorite-outline", 	4, 0, 21, 21 ),
+	-- mpIcon( "mp-favorite",			3, 0, 21, 21 ),
+	-- mpIcon( "mp-favorite-outline", 	4, 0, 21, 21 ),
 	mpIcon( "mp-volume-mute", 		0, 1, 18, 17 ),
 	mpIcon( "mp-volume", 			1, 1, 18, 17 ),
 	mpIcon( "mp-back", 				2, 1, 16, 17 ),
@@ -134,7 +134,7 @@ function DICON:PaintAt( x, y, dw, dh )
 		local OffX = ceil((dw - w) * 0.5)
 		local OffY = ceil((dh - h) * 0.5)
 
-		spritesheet.DrawIcon( self.m_strIcon, OffX + y, OffY + y, w, h, self.m_Color )
+		spritesheet.DrawIcon( self.m_strIcon, x + OffX, y + OffY, w, h, self.m_Color )
 		return true
 
 	end
@@ -258,7 +258,7 @@ function DICONLBLBTN:PerformLayout()
 
 	local w = self.BtnLbl:GetPos() + self.BtnLbl:GetWide() + self.m_Padding
 	local h = math.max( self.m_Icon:GetTall(), self.BtnLbl:GetTall() )
-	self:SetWide( w, h )
+	self:SetSize( w, h )
 
 	self.m_Icon:CenterVertical()
 	self.BtnLbl:CenterVertical()

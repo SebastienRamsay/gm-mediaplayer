@@ -1,11 +1,5 @@
 AddCSLuaFile()
 
-if SERVER then
-	resource.AddFile( "models/gmod_tower/suitetv_large.mdl" )
-	resource.AddFile( "materials/models/gmod_tower/suitetv_large.vmt" )
-	resource.AddSingleFile( "materials/entities/mediaplayer_tv.png" )
-end
-
 DEFINE_BASECLASS( "mediaplayer_base" )
 
 ENT.PrintName 		= "Big Screen TV"
@@ -45,17 +39,22 @@ if SERVER then
 
 else -- CLIENT
 
-	local draw = draw
-	local surface = surface
+	local draw_SimpleText = draw.SimpleText
+	local surface_SetDrawColor = surface.SetDrawColor
+	local surface_SetMaterial = surface.SetMaterial
+	local surface_DrawTexturedRect = surface.DrawTexturedRect
+	local surface_SetFont = surface.SetFont
+	local surface_GetTextSize = surface.GetTextSize
+	local math_max = math.max
 	local Start3D2D = cam.Start3D2D
 	local End3D2D = cam.End3D2D
-	local DrawHTMLMaterial = DrawHTMLMaterial
 
 	local TEXT_ALIGN_CENTER = TEXT_ALIGN_CENTER
 	local color_white = color_white
 
-	local StaticMaterial = Material( "theater/STATIC" )
+	local StaticMaterial = Material( "mediaplayer/static" )
 	local TextScale = 700
+	local TextPadding = 40
 
 	function ENT:Draw()
 		self:DrawModel()
@@ -67,33 +66,25 @@ else -- CLIENT
 		end
 	end
 
-	local HTMLMAT_STYLE_ARTWORK_BLUR = "htmlmat.style.artwork_blur"
-	AddHTMLMaterialStyle( HTMLMAT_STYLE_ARTWORK_BLUR, {
-		width = 720,
-		height = 480
-	}, HTMLMAT_STYLE_BLUR )
-
-	local DrawThumbnailsCvar = MediaPlayer.Cvars.DrawThumbnails
-
 	function ENT:DrawMediaPlayerOff()
 		local w, h, pos, ang = self:GetMediaPlayerPosition()
-		local thumbnail = self:GetMediaThumbnail()
 
 		Start3D2D( pos, ang, 1 )
-			if DrawThumbnailsCvar:GetBool() and thumbnail != "" then
-				DrawHTMLMaterial( thumbnail, HTMLMAT_STYLE_ARTWORK_BLUR, w, h )
-			else
-				surface.SetDrawColor( color_white )
-				surface.SetMaterial( StaticMaterial )
-				surface.DrawTexturedRect( 0, 0, w, h )
-			end
+			surface_SetDrawColor( color_white )
+			surface_SetMaterial( StaticMaterial )
+			surface_DrawTexturedRect( 0, 0, w, h )
 		End3D2D()
 
+		local info = MediaPlayer.L("mp.idle.press_e")
 
-		local scale = w / TextScale
+		surface_SetFont( "MediaTitle" )
+		local textW = surface_GetTextSize( info )
+		local effectiveScale = math_max( TextScale, textW + TextPadding * 2 )
+
+		local scale = w / effectiveScale
 		Start3D2D( pos, ang, scale )
 			local tw, th = w / scale, h / scale
-			draw.SimpleText( "Press E to begin watching", "MediaTitle",
+			draw_SimpleText( info, "MediaTitle",
 				tw / 2, th / 2, color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
 		End3D2D()
 	end

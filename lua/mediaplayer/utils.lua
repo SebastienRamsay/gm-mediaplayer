@@ -45,7 +45,7 @@ end
 
 ---
 -- Formats the number of seconds to a string.
--- e.g. 3612 => 24:12
+-- e.g. 3612 => 1:00:12
 --
 function utils.FormatSeconds(sec)
 	sec = Round(sec)
@@ -54,18 +54,10 @@ function utils.FormatSeconds(sec)
 	local minutes = floor((sec % 3600) / 60)
 	local seconds = sec % 60
 
-	if minutes < 10 then
-		minutes = "0" .. tostring(minutes)
-	end
-
-	if seconds < 10 then
-		seconds = "0" .. tostring(seconds)
-	end
-
 	if hours > 0 then
-		return format("%s:%s:%s", hours, minutes, seconds)
+		return format("%d:%02d:%02d", hours, minutes, seconds)
 	else
-		return format("%s:%s", minutes, seconds)
+		return format("%02d:%02d", minutes, seconds)
 	end
 end
 
@@ -187,11 +179,19 @@ if CLIENT then
 	local DrawRect = surface.DrawRect
 
 	local color_white = color_white
+	local RealTime = RealTime
+
+	local HTML_TEX_INTERVAL = 1 / 30 -- throttle UpdateHTMLTexture to ~30fps
 
 	function utils.DrawHTMLPanel( panel, w, h )
 		if not (IsValid( panel ) and w and h) then return end
 
-		panel:UpdateHTMLTexture()
+		-- Throttle UpdateHTMLTexture to ~30fps per panel
+		local now = RealTime()
+		if not panel._mp_nextTexUpdate or now >= panel._mp_nextTexUpdate then
+			panel:UpdateHTMLTexture()
+			panel._mp_nextTexUpdate = now + HTML_TEX_INTERVAL
+		end
 
 		local pw, ph = panel:GetSize()
 
@@ -270,7 +270,7 @@ if CLIENT then
 		end )
 	end
 
-	--- 
+	---
 	-- Gathers the Duration from URI
 	-- Works only with URIs that lead directly to the video
 	do
@@ -307,12 +307,18 @@ if CLIENT then
 
 				if msg:StartWith("DURATION:") then
 					local str_duration = string.sub(msg, 10)
-					
+
 					local duration
-					if str_duration == "Infinity" then // Edgecase from fragmented webm
+					if str_duration == "Infinity" then -- Edgecase from fragmented webm
 						duration = math.huge
 					else
-						duration = math.ceil(tonumber(str_duration))
+						local num = tonumber(str_duration)
+						if not num then
+							callback(false, "Invalid duration: " .. str_duration)
+							panel:Remove()
+							return
+						end
+						duration = math.ceil(num)
 					end
 
 					callback(true, duration)

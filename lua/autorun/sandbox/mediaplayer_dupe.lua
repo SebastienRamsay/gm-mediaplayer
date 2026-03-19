@@ -1,40 +1,19 @@
 local MEDIAPLAYER_DUPE = nil
 local MEDIAPLAYER_SAVE = false
-local MEDIAPLAYER_THUMBNAIL = nil
 
-local HTMLMAT_STYLE_DUPE = "htmlmat.style.dupe"
--- AddHTMLMaterialStyle( HTMLMAT_STYLE_DUPE, {
--- 	width = 512,
--- 	height = 512,
--- 	css = [[
--- img {
--- 	width: 100%;
--- 	position: absolute;
--- 	top: 50%;
--- 	left: 50%;
--- 	-webkit-filter: blur(6px);
--- 	-webkit-transform: translate(-50%, -50%) scale(1.1,1.1);
--- }]]
--- } )
-AddHTMLMaterialStyle( HTMLMAT_STYLE_DUPE, {
-	width = 512,
-	height = 512,
-	css = [[
-img {
-	-webkit-filter: blur(6px) brightness(0.9);
-	-webkit-transform: translate(-50%, -50%) scale(1.05, 1.05);
-}]]
-}, HTMLMAT_STYLE_COVER_IMG )
+local mat_dupe_bg = Material( "gui/dupe_bg.png" )
+local mat_debugwhite = Material( "models/debug/debugwhite" )
+local mat_static = Material( "mediaplayer/static" )
 
 surface.CreateFont( "DupeMediaText", {
-	font		= "Clear Sans Medium",
+	font		= "Roboto Medium",
 	antialias	= true,
+	extended	= true,
 	weight		= 400,
 	size        = 80
 } )
 
 local function PreSaveMediaPlayerDupe( Dupe )
-
 	local mediaplayers = {}
 
 	for _, ent in pairs( Dupe.Entities or {} ) do
@@ -43,23 +22,7 @@ local function PreSaveMediaPlayerDupe( Dupe )
 		end
 	end
 
-	local mp = mediaplayers[1]
-	local snapshot = mp.MediaPlayerSnapshot
-
-	local media = snapshot.media
-	local metadata = media and media._metadata
-	local thumbnail = metadata and metadata.thumbnail
-
-	if thumbnail then
-		HTMLMaterial( thumbnail, HTMLMAT_STYLE_DUPE, function( material )
-			MEDIAPLAYER_THUMBNAIL = material
-			MEDIAPLAYER_SAVE = true
-		end )
-	else
-		MEDIAPLAYER_THUMBNAIL = Material( "gui/dupe_bg.png" )
-		MEDIAPLAYER_SAVE = true
-	end
-
+	MEDIAPLAYER_SAVE = true
 end
 
 local function DrawOutlinedText(text, font, x, y, colour, xalign, yalign)
@@ -163,11 +126,9 @@ local function RenderMediaPlayerDupe( Dupe )
 	--
 	-- DRAW THE BACKGROUND
 	--
-	render.SetMaterial( Material( "gui/dupe_bg.png" ) )
+	render.SetMaterial( mat_dupe_bg )
 	render.DrawScreenQuadEx( 0, 0, 512, 512 )
 
-	render.SetMaterial( MEDIAPLAYER_THUMBNAIL )
-	render.DrawScreenQuadEx( 0, 0, 512, 512 )
 	render.SuppressEngineLighting( true )
 
 	--
@@ -181,7 +142,7 @@ local function RenderMediaPlayerDupe( Dupe )
 	local Right			= EyeAng:Right() * BorderSize
 
 	render.SetColorModulation( 1, 1, 1, 1 )
-	render.MaterialOverride( Material( "models/debug/debugwhite" ) )
+	render.MaterialOverride( mat_debugwhite )
 
 	-- Render each entity in a circle
 	for k, v in pairs( Dupe.Entities ) do
@@ -293,7 +254,7 @@ local function RenderMediaPlayerDupe( Dupe )
 				local w, h, pos, ang = ent:GetMediaPlayerPosition()
 				cam.Start3D2D( pos, ang, 1 )
 					surface.SetDrawColor( color_white )
-					surface.SetMaterial( Material( "theater/STATIC" ) )
+					surface.SetMaterial( mat_static )
 					surface.DrawTexturedRect( 0, 0, w, h )
 				cam.End3D2D()
 			end
@@ -361,7 +322,13 @@ local function SaveMediaPlayerDupe( Dupe, jpegdata )
 
 		MsgN( "Saved!" )
 
-		-- TODO: Open tab and show dupe!
+		-- Open the spawnmenu and switch to the dupes tab
+		timer.Simple( 0, function()
+			if IsValid( g_SpawnMenu ) then
+				g_SpawnMenu:Open()
+				spawnmenu.SwitchCreationTab( "#spawnmenu.category.dupes" )
+			end
+		end )
 
 	end
 

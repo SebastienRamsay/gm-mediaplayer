@@ -12,11 +12,12 @@ util.AddNetworkString( "MEDIAPLAYER.RequestLock" )
 local REQUEST_DELAY = 0.2
 
 local function RequestWrapper( func )
-	local nextRequest
+	local nextRequests = {}
 	return function( len, ply )
 		if not IsValid(ply) then return end
 
-		if nextRequest and nextRequest > RealTime() then
+		local sid = ply:SteamID64()
+		if nextRequests[sid] and nextRequests[sid] > RealTime() then
 			return
 		end
 
@@ -26,17 +27,25 @@ local function RequestWrapper( func )
 
 		func( mp, ply )
 
-		nextRequest = RealTime() + REQUEST_DELAY
+		nextRequests[sid] = RealTime() + REQUEST_DELAY
 	end
 end
 
 net.Receive( "MEDIAPLAYER.RequestListen", RequestWrapper(function(mp, ply)
 
 	if MediaPlayer.DEBUG then
-		print("MEDIAPLAYER.RequestListen:", mpId, ply)
+		print("MEDIAPLAYER.RequestListen:", mp:GetId(), ply)
 	end
 
-	-- TODO: check if listener can actually be a listener
+	-- Validate listener eligibility
+	if ply:IsBot() then return end
+	if not ply:IsConnected() then return end
+
+	-- Allow hooks to block listener requests
+	if hook.Run( "CanPlayerListenToMediaPlayer", mp, ply ) == false then
+		return
+	end
+
 	if mp:HasListener(ply) then
 		mp:RemoveListener(ply)
 	else
@@ -44,7 +53,6 @@ net.Receive( "MEDIAPLAYER.RequestListen", RequestWrapper(function(mp, ply)
 	end
 
 end) )
-
 ---
 -- Event called when a player requests a media update. This will occur when
 -- a client determines it's not synced correctly.
@@ -55,7 +63,7 @@ end) )
 net.Receive( "MEDIAPLAYER.RequestUpdate", RequestWrapper(function(mp, ply)
 
 	if MediaPlayer.DEBUG then
-		print("MEDIAPLAYER.RequestUpdate:", mpId, ply)
+		print("MEDIAPLAYER.RequestUpdate:", mp:GetId(), ply)
 	end
 
 	mp:SendMedia( mp:GetMedia(), ply )
@@ -74,12 +82,16 @@ net.Receive( "MEDIAPLAYER.RequestMedia", RequestWrapper(function(mp, ply)
 
 	-- Validate the URL
 	if not MediaPlayer.ValidUrl( url ) and not allowWebpage then
-		mp:NotifyPlayer( ply, "The requested URL was invalid." )
+		mp:NotifyPlayer( ply, MediaPlayer.L("mp.error.invalid_url") )
 		return
 	end
 
 	-- Build the media object for the URL
 	local media = MediaPlayer.GetMediaForUrl( url, allowWebpage )
+	if not media then
+		mp:NotifyPlayer( ply, MediaPlayer.L("mp.error.media_url_failed") )
+		return
+	end
 	media:NetReadRequest()
 
 	mp:RequestMedia( media, ply )

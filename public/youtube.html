@@ -9,8 +9,10 @@
 
 	<link rel="dns-prefetch" href="//www.youtube.com">
 	<link rel="dns-prefetch" href="//www.youtube-nocookie.com">
+	<link rel="dns-prefetch" href="//i.ytimg.com">
 	<link rel="preconnect" href="https://www.youtube.com" crossorigin>
 	<link rel="preconnect" href="https://www.youtube-nocookie.com" crossorigin>
+	<link rel="preload" href="https://www.youtube.com/iframe_api" as="script">
 
 	<style>
 		html, body {
@@ -104,12 +106,18 @@
 						// Unload the captions module
 						player.unloadModule('captions');
 
+						// Start silent — Lua will push the correct volume
+						player.setVolume(0);
+
 						// Additional seek if needed (for more precise timing)
 						if (startTime > 0) {
 							player.seekTo(startTime, true);
 						}
 
 						window.MediaPlayer = wrapper;
+
+						// Signal Lua that the player is ready for volume
+						console.log("READY:");
 					},
 					onStateChange: (e) => wrapper._paused = e.data !== YT.PlayerState.PLAYING
 				}

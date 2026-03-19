@@ -1,5 +1,5 @@
-local ceil = math.ceil
 local clamp = math.Clamp
+local min = math.min
 
 local FormatSeconds = MediaPlayerUtils.FormatSeconds
 
@@ -11,7 +11,8 @@ local FontTbl = {
 	font = "Roboto Medium",
 	size = 21,
 	weight = 400,
-	antialias = true
+	antialias = true,
+	extended = true
 }
 
 surface.CreateFont( "MP.MediaTitle", FontTbl )
@@ -32,10 +33,6 @@ FontTbl.font = "Roboto Light"
 FontTbl.size = 13
 surface.CreateFont( "MP.Prefix", FontTbl )
 
-FontTbl.font = "Roboto Light"
-FontTbl.size = 13
-surface.CreateFont( "MP.VoteCount", FontTbl )
-
 FontTbl.font = "Roboto Bold"
 FontTbl.size = 16
 surface.CreateFont( "MP.AddedByName", FontTbl )
@@ -45,16 +42,92 @@ surface.CreateFont( "MP.AddedByName", FontTbl )
 	Common media player panels
 ----------------------------------------------]]
 
+local color_transparent = Color(0, 0, 0, 0)
+local SCROLL_SPEED = 50
+local PAUSE_DURATION = 2
+
 local MEDIA_TITLE = {}
 
 function MEDIA_TITLE:Init()
 	self.BaseClass.Init( self )
 	self:SetFont( "MP.MediaTitle" )
 	self:SetTextColor( color_white )
+
+	self._scrollOffset = 0
+	self._scrolling = false
+	self._paused = true
+	self._pauseStart = RealTime()
+	self._lastText = ""
+end
+
+function MEDIA_TITLE:Think()
+	local text = self:GetText()
+	local w = self:GetWide()
+
+	-- Recalculate text width when text changes
+	if text ~= self._lastText then
+		self._lastText = text
+		surface.SetFont(self:GetFont())
+		local tw = surface.GetTextSize(text)
+		self._textWidth = tw
+		self._scrollOffset = 0
+		self._paused = true
+		self._pauseStart = RealTime()
+	end
+
+	-- Check if scrolling is needed
+	if not self._textWidth or self._textWidth <= w then
+		self._scrolling = false
+		self:SetTextColor(color_white)
+		return
+	end
+
+	self._scrolling = true
+	self:SetTextColor(color_transparent)
+
+	local maxScroll = self._textWidth - w
+
+	if self._paused then
+		if RealTime() - self._pauseStart >= PAUSE_DURATION then
+			self._paused = false
+			-- If we were at the end, jump back to start and pause again
+			if self._scrollOffset >= maxScroll then
+				self._scrollOffset = 0
+				self._paused = true
+				self._pauseStart = RealTime()
+			end
+		end
+	else
+		self._scrollOffset = self._scrollOffset + SCROLL_SPEED * FrameTime()
+		if self._scrollOffset >= maxScroll then
+			self._scrollOffset = maxScroll
+			self._paused = true
+			self._pauseStart = RealTime()
+		end
+	end
+end
+
+function MEDIA_TITLE:Paint(w, h)
+	if not self._scrolling then
+		return
+	end
+
+	local x, y = self:LocalToScreen(0, 0)
+
+	render.SetScissorRect(x, y, x + w, y + h, true)
+	draw.SimpleText(
+		self:GetText(),
+		self:GetFont(),
+		-self._scrollOffset,
+		h / 2,
+		color_white,
+		nil,
+		TEXT_ALIGN_CENTER
+	)
+	render.SetScissorRect(0, 0, 0, 0, false)
 end
 
 derma.DefineControl( "MP.MediaTitle", "", MEDIA_TITLE, "DLabel" )
-
 
 local MEDIA_TIME = {}
 
@@ -155,7 +228,11 @@ function MEDIA_TIME:Think()
 		end
 
 	else
-		-- TODO: hide info?
+
+		self.TimeLbl:SetText( "" )
+		self.DividerLbl:SetText( "" )
+		self.DurationLbl:SetText( "" )
+
 	end
 
 	self:InvalidateLayout(true)
@@ -196,13 +273,13 @@ function ADDED_BY:Init()
 
 	self.PrefixLbl = vgui.Create( "DLabel", self )
 	self.PrefixLbl:SetFont( "MP.Prefix" )
-	self.PrefixLbl:SetText( "ADDED BY" )
+	self.PrefixLbl:SetText( MediaPlayer.L("mp.ui.added_by") )
 	self.PrefixLbl:SetTextColor( color_white )
 	self.PrefixLbl:SetContentAlignment( 8 )
 
 	self.NameLbl = vgui.Create( "DLabel", self )
 	self.NameLbl:SetFont( "MP.AddedByName" )
-	self.NameLbl:SetText( "Unknown" )
+	self.NameLbl:SetText( MediaPlayer.L("mp.ui.unknown") )
 	self.NameLbl:SetTextColor( color_white )
 	self.NameLbl:SetContentAlignment( 8 )
 
@@ -234,7 +311,7 @@ function ADDED_BY:PerformLayout()
 	local w = pw + nw + self.NameOffset
 
 	if self.maxWidth then
-		w = math.min( w, self.maxWidth )
+		w = min( w, self.maxWidth )
 
 		-- Clips name label to the maximum width; looks kind of bad since the
 		-- ellipsis start too early for some reason.
@@ -326,48 +403,6 @@ end
 
 derma.DefineControl( "MP.SidebarToggleButton", "", SIDEBAR_TOGGLE_BTN, "MP.SidebarButton" )
 
-
-local FAVORITE_BTN = {}
-
-AccessorFunc( FAVORITE_BTN, "Favorited", "Favorited" )
-
-function FAVORITE_BTN:Init()
-	self.BaseClass.Init( self )
-
-	self:SetIcon( "mp-favorite-outline" )
-	self:SetFavorited( false )
-	self.Outlined = true
-end
-
-function FAVORITE_BTN:Think()
-	self.BaseClass.Think(self)
-
-	if not self.Favorited then
-		local hovered = self:IsHovered()
-
-		if self.Outlined then
-			if hovered then
-				self:SetIcon( "mp-favorite" )
-				self:SetHighlighted( true )
-				self.Outlined = false
-			end
-		else
-			if not hovered then
-				self:SetIcon( "mp-favorite-outline" )
-				self:SetHighlighted( false )
-				self.Outlined = true
-			end
-		end
-	end
-end
-
-function FAVORITE_BTN:DoClick()
-	hook.Run( MP.EVENTS.UI.FAVORITE_MEDIA, self.m_Media )
-end
-
-derma.DefineControl( "MP.FavoriteButton", "", FAVORITE_BTN, "MP.SidebarButton" )
-
-
 local REMOVE_BTN = {}
 
 function REMOVE_BTN:Init()
@@ -394,202 +429,3 @@ function SKIP_BTN:DoClick()
 end
 
 derma.DefineControl( "MP.SkipButton", "", SKIP_BTN, "MP.SidebarButton" )
-
-
---[[--------------------------------------------
-	Vote controls
-----------------------------------------------]]
-
-local VOTE_POSITIVE = 1
-local VOTE_NEGATIVE = -1
-
-local VOTE_CONTROLS = {
-	Width = 60,
-	Height = 21,
-	VoteCountPadding = 5
-}
-
-AccessorFunc( VOTE_CONTROLS, "m_iVoteCount", "VoteCount" )
-AccessorFunc( VOTE_CONTROLS, "m_iVoteValue", "VoteValue" )
-
-AccessorFunc( VOTE_CONTROLS, "m_bUpvoteEnabled", "UpvoteEnabled" )
-AccessorFunc( VOTE_CONTROLS, "m_bDownvoteEnabled", "DownvoteEnabled" )
-
-function VOTE_CONTROLS:Init()
-	self:SetSize( self.Width, self.Height )
-
-	self.UpvoteBtn = vgui.Create( "MP.UpvoteButton", self )
-	self.UpvoteBtn.OnVote = function(btn) self:OnUpvote(btn) end
-
-	self.DownvoteBtn = vgui.Create( "MP.DownvoteButton", self )
-	self.DownvoteBtn.OnVote = function(btn) self:OnDownvote(btn) end
-
-	self.VoteCountLbl = vgui.Create( "DLabel", self )
-	self.VoteCountLbl:SetTextColor( color_white )
-	self.VoteCountLbl:SetFont( "MP.VoteCount" )
-
-	-- TODO: setup event handlers for voting and set the vote count
-
-	-- TODO: listen for global media vote events and update count
-
-	self:SetVoteCount( 0 )
-	self:SetVoteValue( 0 )
-
-	self:SetUpvoteEnabled( true )
-	self:SetDownvoteEnabled( true )
-end
-
-function VOTE_CONTROLS:SetMedia( media )
-	self.m_Media = media
-
-	local voteCount = media:GetMetadataValue("votes") or 0
-	self:SetVoteCount(voteCount)
-
-	local localVote = media:GetMetadataValue("localVote") or 0
-	self:SetVoteValue( localVote )
-
-	self.UpvoteBtn:SetMedia( media )
-	self.DownvoteBtn:SetMedia( media )
-end
-
-function VOTE_CONTROLS:SetVoteCount( count )
-	self.m_iVoteCount = count
-	self.VoteCountLbl:SetText( count )
-	self:InvalidateLayout(true)
-end
-
-function VOTE_CONTROLS:SetVoteValue( value )
-	self.m_iVoteValue = value
-
-	if value > 0 then
-		-- highlight upvote button
-		self.UpvoteBtn:SetHighlighted( true )
-		self.DownvoteBtn:SetHighlighted( false )
-	elseif value < 0 then
-		-- highlight downvote button
-		self.UpvoteBtn:SetHighlighted( false )
-		self.DownvoteBtn:SetHighlighted( true )
-	else
-		-- don't highlight either button
-		self.UpvoteBtn:SetHighlighted( false )
-		self.DownvoteBtn:SetHighlighted( false )
-	end
-end
-
-function VOTE_CONTROLS:OnUpvote()
-	local value = self:GetVoteValue()
-
-	if value > 0 then
-		value = 0 -- remove vote
-	else
-		value = 1 -- set vote
-	end
-
-	self:SetVoteCount( self:GetVoteCount() + value )
-	self:SetVoteValue( value )
-
-	hook.Run( MP.EVENTS.UI.VOTE_MEDIA, self.m_Media, value )
-end
-
-function VOTE_CONTROLS:OnDownvote()
-	local value = self:GetVoteValue()
-
-	if value < 0 then
-		value = 0 -- remove vote
-	else
-		value = -1 -- set vote
-	end
-
-	self:SetVoteCount( self:GetVoteCount() + value )
-	self:SetVoteValue( value )
-
-	hook.Run( MP.EVENTS.UI.VOTE_MEDIA, self.m_Media, value )
-end
-
-function VOTE_CONTROLS:PerformLayout()
-	local align
-	local w = self.Width
-
-	local upvoteEnabled = self:GetUpvoteEnabled()
-	local downvoteEnabled = self:GetDownvoteEnabled()
-
-	if upvoteEnabled and downvoteEnabled then
-		align = TEXT_ALIGN_CENTER
-		w = w - SIDEBAR_BTN.Width * 2
-	elseif upvoteEnabled then
-		align = TEXT_ALIGN_RIGHT
-		w = w - SIDEBAR_BTN.Width
-	else
-		align = TEXT_ALIGN_LEFT
-		w = w - SIDEBAR_BTN.Width
-	end
-
-	self:SetSize( w, self.Height )
-
-	if upvoteEnabled then
-		self.UpvoteBtn:Show()
-		self.UpvoteBtn:AlignLeft()
-		self.UpvoteBtn:CenterVertical()
-	else
-		self.UpvoteBtn:Hide()
-	end
-
-	if downvoteEnabled then
-		self.DownvoteBtn:Show()
-		self.DownvoteBtn:AlignRight()
-		self.DownvoteBtn:CenterVertical()
-	else
-		self.DownvoteBtn:Hide()
-	end
-
-	self.VoteCountLbl:SizeToContents()
-	self.VoteCountLbl:CenterVertical()
-
-	if align == TEXT_ALIGN_LEFT then
-		self.VoteCountLbl:SetContentAlignment(4)
-		self.VoteCountLbl:AlignLeft( self.VoteCountPadding )
-	elseif align == TEXT_ALIGN_RIGHT then
-		self.VoteCountLbl:SetContentAlignment(6)
-		self.VoteCountLbl:AlignRight( self.VoteCountPadding )
-	else -- TEXT_ALIGN_CENTER
-		self.VoteCountLbl:SetContentAlignment(5)
-		self.VoteCountLbl:CenterHorizontal()
-	end
-
-end
-
-derma.DefineControl( "MP.VoteControls", "", VOTE_CONTROLS, "DPanel" )
-
-
-local UPVOTE_BTN = {}
-
-function UPVOTE_BTN:Init()
-	self.BaseClass.Init( self )
-	self:SetIcon( "mp-thumbs-up" )
-end
-
-function UPVOTE_BTN:DoClick()
-	self:OnVote( VOTE_POSITIVE )
-end
-
-function UPVOTE_BTN:OnVote( value )
-end
-
-derma.DefineControl( "MP.UpvoteButton", "", UPVOTE_BTN, "MP.SidebarButton" )
-
-
-local DOWNVOTE_BTN = {}
-
-function DOWNVOTE_BTN:Init()
-	self.BaseClass.Init( self )
-	self:SetIcon( "mp-thumbs-down" )
-end
-
-function DOWNVOTE_BTN:DoClick()
-	self:OnVote( VOTE_NEGATIVE )
-end
-
-function DOWNVOTE_BTN:OnVote( value )
-end
-
-derma.DefineControl( "MP.DownvoteButton", "", DOWNVOTE_BTN, "MP.SidebarButton" )

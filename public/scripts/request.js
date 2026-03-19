@@ -1,9 +1,11 @@
+// public/scripts/request.js
 'use strict';
 
 // Service definitions with codec requirements
 const services = [
 	{ name: 'YouTube', icon: 'youtube', url: 'https://youtube.com/', action: 'select', requiresCodec: false },
 	{ name: 'TikTok', icon: 'tiktok', url: 'https://tiktok.com/', action: 'select', requiresCodec: true },
+	{ name: 'Bilibili', icon: 'bilibili', url: 'https://www.bilibili.com/', action: 'open', requiresCodec: true },
 	{ name: 'Twitch', icon: 'twitch', url: 'https://www.twitch.tv/', action: 'select', requiresCodec: true },
 	{ name: 'SoundCloud', icon: 'soundcloud', url: 'https://soundcloud.com/discover', action: 'select', requiresCodec: false },
 	{ name: 'Dailymotion', icon: 'dailymotion', url: 'https://www.dailymotion.com/', action: 'select', requiresCodec: true },
@@ -49,9 +51,11 @@ async function initializeServices() {
 		}
 
 		card.innerHTML = `
-			<div class="service-icon logo-${service.icon}"></div>
-			<div class="service-name">${service.name}</div>
-			${isDisabled ? '<div class="disabled-overlay">Codec Required</div>' : ''}
+			<div class="service-card-inner">
+				<div class="service-icon logo-${service.icon}"></div>
+				<div class="service-name">${service.name}</div>
+				${isDisabled ? `<div class="disabled-overlay">${MP_I18N.t("request.codec_overlay")}</div>` : ''}
+			</div>
 		`;
 
 		grid.appendChild(card);
@@ -120,7 +124,7 @@ function requestUrl() {
 	if (url.length === 0) return;
 
 	statusIndicator.classList.remove('hidden');
-	statusText.textContent = 'Request sent!';
+	statusText.textContent = MP_I18N.t('request.status_sent');
 	submitBtn.disabled = true;
 
 	setTimeout(() => {
@@ -189,6 +193,7 @@ function isValidURL(string) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+	MP_I18N.initFromHash();
 	initializeServices();
 	initializeUrlInput();
 	initializeAutoInput();

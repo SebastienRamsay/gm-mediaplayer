@@ -6,9 +6,6 @@ AddCSLuaFile "net.lua"
 include "shared.lua"
 include "net.lua"
 
--- Additional transmit states
-TRANSMIT_LOCATION = 4
-
 -- Media player network strings
 util.AddNetworkString( "MEDIAPLAYER.Update" )
 util.AddNetworkString( "MEDIAPLAYER.Media" )
@@ -52,22 +49,6 @@ function MEDIAPLAYER:UpdateListeners()
 
 		listeners = player.GetInPVS( self.Entity and self.Entity or self:GetPos() )
 
-	elseif transmitState == TRANSMIT_LOCATION then
-
-		local loc = self:GetLocation()
-
-		if not Location then
-			ErrorNoHalt("'Location' module not defined in mediaplayer!\n")
-			debug.Trace()
-			return
-		elseif loc == -1 then
-			ErrorNoHalt("Invalid location assigned to mediaplayer!\n")
-			debug.Trace()
-			return
-		end
-
-		listeners = Location.GetPlayersInLocation( loc )
-
 	else
 		ErrorNoHalt("Invalid transmit state for mediaplayer\n")
 		debug.Trace()
@@ -84,11 +65,14 @@ end
 function MEDIAPLAYER:SetListeners( listeners )
 
 	local ValidListeners = {}
+	local ValidSet = {}
 
 	-- Filter listeners
-	for _, ply in pairs(listeners) do
+	for i = 1, #listeners do
+		local ply = listeners[i]
 		if IsValid(ply) and ply:IsConnected() and not ply:IsBot() then
-			table.insert( ValidListeners, ply )
+			ValidListeners[#ValidListeners + 1] = ply
+			ValidSet[ply] = true
 		end
 	end
 
@@ -97,16 +81,22 @@ function MEDIAPLAYER:SetListeners( listeners )
 	-- A = self._Listeners
 	-- B = listeners
 	-- (A ∩ B)^c
-	for _, ply in pairs(self._Listeners) do
-		if not table.HasValue( ValidListeners, ply ) then
-			self:RemoveListener( ply )
+	local toRemove = {}
+	for i = 1, #self._Listeners do
+		local ply = self._Listeners[i]
+		if not ValidSet[ply] then
+			toRemove[#toRemove + 1] = ply
 		end
 	end
 
+	for i = 1, #toRemove do
+		self:RemoveListener( toRemove[i] )
+	end
+
 	-- Find players who should be added
-	for _, ply in pairs(ValidListeners) do
-		if not self:HasListener(ply) then
-			self:AddListener( ply )
+	for i = 1, #ValidListeners do
+		if not self._ListenerSet[ValidListeners[i]] then
+			self:AddListener( ValidListeners[i] )
 		end
 	end
 
@@ -118,7 +108,8 @@ function MEDIAPLAYER:AddListener( ply )
 		print( "MEDIAPLAYER.AddListener", self, ply )
 	end
 
-	table.insert( self._Listeners, ply )
+	self._Listeners[#self._Listeners + 1] = ply
+	self._ListenerSet[ply] = true
 
 	-- Send player queue information
 	self:BroadcastUpdate(ply)
@@ -147,6 +138,8 @@ function MEDIAPLAYER:RemoveListener( ply )
 		return
 	end
 
+	self._ListenerSet[ply] = nil
+
 	-- Inform listener of removal
 	net.Start( "MEDIAPLAYER.Remove" )
 		net.WriteString( self:GetId() )
@@ -157,9 +150,8 @@ function MEDIAPLAYER:RemoveListener( ply )
 end
 
 function MEDIAPLAYER:HasListener( ply )
-	return table.HasValue( self._Listeners, ply )
+	return self._ListenerSet[ply] or false
 end
-
 
 --[[---------------------------------------------------------
 	Queue Management
@@ -250,14 +242,14 @@ function MEDIAPLAYER:CanPlayerRequestMedia( ply, media )
 		) then
 		local names = MediaPlayer.GetValidServiceNames(self.ServiceWhitelist)
 
-		local msg = "The requested media isn't supported; accepted services are as followed:\n"
+		local msg = MediaPlayer.L("mp.error.service_whitelist")
 		msg = msg .. table.concat( names, ", " )
 
 		return false, msg
 	end
 
 	if self:GetQueueLocked() and not self:IsPlayerPrivileged(ply) then
-		return false, "The requested media couldn't be added as the queue is locked."
+		return false, MediaPlayer.L("mp.error.queue_locked")
 	end
 
 	return true
@@ -284,7 +276,7 @@ function MEDIAPLAYER:RequestMedia( media, ply )
 	local allowed, msg = self:CanPlayerRequestMedia(ply, media)
 
 	if not allowed then
-		self:NotifyPlayer( ply, msg and msg or "Your media request has been denied." )
+		self:NotifyPlayer( ply, msg and msg or MediaPlayer.L("mp.error.request_denied") )
 		return
 	end
 
@@ -294,7 +286,7 @@ function MEDIAPLAYER:RequestMedia( media, ply )
 
 	-- Queue must have space for the request
 	if #self._Queue == self:GetQueueLimit() then
-		self:NotifyPlayer( ply, "The media player queue is full." )
+		self:NotifyPlayer( ply, MediaPlayer.L("mp.error.queue_full") )
 		return
 	end
 
@@ -306,13 +298,15 @@ function MEDIAPLAYER:RequestMedia( media, ply )
 				print(media)
 				print(s)
 			end
-			self:NotifyPlayer( ply, "The requested media was already in the queue" )
+			self:NotifyPlayer( ply, MediaPlayer.L("mp.error.duplicate_request") )
 			return
 		end
 	end
 
-	-- TODO: prevent media from playing if this hook returns false(?)
-	hook.Run( "PreMediaPlayerMediaRequest", self, media, ply )
+	if hook.Run( "PreMediaPlayerMediaRequest", self, media, ply ) == false then
+		self:NotifyPlayer( ply, MediaPlayer.L("mp.error.request_denied") )
+		return
+	end
 
 	-- self:NotifyPlayer( ply, "Processing media request..." )
 
@@ -320,9 +314,9 @@ function MEDIAPLAYER:RequestMedia( media, ply )
 	media:GetMetadata(function(data, err)
 
 		if not data then
-			err = err and err or "There was a problem fetching the requested media's metadata."
+			err = err and err or MediaPlayer.L("mp.error.metadata_fetch")
 			print(err)
-			self:NotifyPlayer( ply, "[Request Error] " .. err )
+			self:NotifyPlayer( ply, string.format( MediaPlayer.L("mp.error.request_error"), err ) )
 			return
 		end
 
@@ -332,7 +326,7 @@ function MEDIAPLAYER:RequestMedia( media, ply )
 
 		if not queueMedia then
 			self:NotifyPlayer( ply,
-				msg and msg or "The requested media couldn't be queued." )
+				msg and msg or MediaPlayer.L("mp.error.queue_denied") )
 			return
 		end
 
@@ -340,12 +334,10 @@ function MEDIAPLAYER:RequestMedia( media, ply )
 		self:AddMedia( media )
 		self:QueueUpdated()
 
-		local msg = string.format( "Added '%s' to the queue", media:Title() )
+		local msg = MediaPlayer.L("mp.success.added_to_queue", media:Title())
 		self:NotifyPlayer( ply, msg )
 
 		self:BroadcastUpdate()
-
-		MediaPlayer.History:LogRequest( media )
 
 		hook.Run( "PostMediaPlayerMediaRequest", self, media, ply )
 
@@ -360,9 +352,9 @@ function MEDIAPLAYER:RequestPause( ply )
 		return
 	end
 
-	-- Check player priviledges
-	if not self:IsPlayerPrivileged(ply) then
-		self:NotifyPlayer(ply, "You don't have permission to do that.")
+	-- Non-privileged players vote to skip
+	if not self._Voteskip then
+		self:NotifyPlayer(ply, MediaPlayer.L("mp.error.no_permission"))
 		return
 	end
 
@@ -383,17 +375,42 @@ function MEDIAPLAYER:RequestSkip( ply )
 		return
 	end
 
-	-- Check player priviledges
-	if not self:IsPlayerPrivileged(ply) then
-		self:NotifyPlayer(ply, "You don't have permission to do that.")
+	-- Privileged players can skip instantly
+	if self:IsPlayerPrivileged(ply) then
+		if MediaPlayer.DEBUG then
+			print( "MEDIAPLAYER.RequestSkip (privileged)", ply )
+		end
+		self:OnMediaFinished()
 		return
 	end
 
-	if MediaPlayer.DEBUG then
-		print( "MEDIAPLAYER.RequestSkip", ply )
+	-- Guard: voteskip manager must exist
+	if not self._Voteskip then
+		self:NotifyPlayer(ply, MediaPlayer.L("mp.error.no_permission"))
+		return
 	end
 
-	self:OnMediaFinished()
+	-- Non-privileged players vote to skip
+	if self._Voteskip:HasVoted(ply) then
+		self:NotifyPlayer(ply, MediaPlayer.L("mp.voteskip.already_voted"))
+		return
+	end
+
+	self._Voteskip:AddVote(ply)
+
+	local numListeners = #self._Listeners
+	local numVotes = self._Voteskip:GetNumVotes()
+	local reqVotes = self._Voteskip:GetNumRequiredVotes(numListeners)
+
+	if self._Voteskip:ShouldSkip(numListeners) then
+		self:NotifyListeners(MediaPlayer.L("mp.voteskip.passed"))
+		self:OnMediaFinished()
+	else
+		local remaining = reqVotes - numVotes
+		self:NotifyListeners(
+			MediaPlayer.L("mp.voteskip.vote_cast", numVotes, reqVotes, remaining)
+		)
+	end
 
 end
 
@@ -408,7 +425,7 @@ function MEDIAPLAYER:RequestSeek( ply, seekTime )
 
 	-- Check player priviledges
 	if not self:IsPlayerPrivileged(ply) then
-		self:NotifyPlayer(ply, "You don't have permission to do that.")
+		self:NotifyPlayer(ply, MediaPlayer.L("mp.error.no_permission"))
 		return
 	end
 
@@ -417,6 +434,7 @@ function MEDIAPLAYER:RequestSeek( ply, seekTime )
 	end
 
 	local media = self:CurrentMedia()
+	if not media then return end
 
 	-- Ignore requests for media that isn't timed
 	if not media:IsTimed() then
@@ -425,7 +443,7 @@ function MEDIAPLAYER:RequestSeek( ply, seekTime )
 
 	-- Ignore request if time is past the end of the video
 	if seekTime > media:Duration() then
-		self:NotifyPlayer( ply, "Request seek time was past the end of the media duration." )
+		self:NotifyPlayer( ply, MediaPlayer.L("mp.error.seek_past_duration") )
 		return
 	end
 
@@ -456,12 +474,13 @@ function MEDIAPLAYER:RequestRemove( ply, mediaUID )
 
 	local privileged = self:IsPlayerPrivileged(ply)
 	local currentMedia = self:GetMedia()
+	if not currentMedia then return end
 
 	if currentMedia:UniqueID() == mediaUID then
 		if privileged then
 			self:NextMedia()
 		else
-			self:NotifyPlayer(ply, "You don't have permission to do that.")
+			self:NotifyPlayer(ply, MediaPlayer.L("mp.error.no_permission"))
 		end
 	else
 		local idx, media
@@ -488,7 +507,7 @@ function MEDIAPLAYER:RequestRepeat( ply )
 	end
 
 	if not self:IsPlayerPrivileged(ply) then
-		self:NotifyPlayer(ply, "You don't have permission to do that.")
+		self:NotifyPlayer(ply, MediaPlayer.L("mp.error.no_permission"))
 		return
 	end
 
@@ -504,7 +523,7 @@ function MEDIAPLAYER:RequestShuffle( ply )
 	end
 
 	if not self:IsPlayerPrivileged(ply) then
-		self:NotifyPlayer(ply, "You don't have permission to do that.")
+		self:NotifyPlayer(ply, MediaPlayer.L("mp.error.no_permission"))
 		return
 	end
 
@@ -520,7 +539,7 @@ function MEDIAPLAYER:RequestLock( ply )
 	end
 
 	if not self:IsPlayerPrivileged(ply) then
-		self:NotifyPlayer(ply, "You don't have permission to do that.")
+		self:NotifyPlayer(ply, MediaPlayer.L("mp.error.no_permission"))
 		return
 	end
 
@@ -552,23 +571,24 @@ function MEDIAPLAYER:BroadcastUpdate( ply )
 
 	-- iterate and send net message to each player since their payload may be
 	-- unique to themselves.
-	for _, pl in ipairs(receivers) do
+	for i = 1, #receivers do
+		local pl = receivers[i]
 		net.Start( "MEDIAPLAYER.Update" )
 			net.WriteString( self:GetId() )		-- unique ID
 			net.WriteString( self.Name )		-- media player type
 			net.WriteEntity( self:GetOwner() )
 			self.net.WritePlayerState( self:GetPlayerState() )
 
-			net.WriteBool( self:GetQueueRepeat() )
-			net.WriteBool( self:GetQueueShuffle() )
-			net.WriteBool( self:GetQueueLocked() )
+			net.WriteBool( self:GetQueueRepeat() ) -- should player repeat?
+			net.WriteBool( self:GetQueueShuffle() ) -- should player shuffle?
+			net.WriteBool( self:GetQueueLocked() ) -- is player locked?
 
 			self:NetWriteUpdate( pl )				-- mp type-specific info
 
 			net.WriteUInt( #self._Queue, self:GetQueueLimit(true) )
-			for _, media in ipairs(self._Queue) do
-				self.net.WriteMedia(media)
-				self:OnNetWriteMedia( media, pl )
+			for j = 1, #self._Queue do
+				self.net.WriteMedia(self._Queue[j])
+				self:OnNetWriteMedia( self._Queue[j], pl )
 			end
 		net.Send( pl )
 	end
@@ -584,8 +604,8 @@ function MEDIAPLAYER:OnNetWriteMedia( media, ply )
 end
 
 function MEDIAPLAYER:NotifyListeners( msg )
-	for _, ply in ipairs( self._Listeners ) do
-		self:NotifyPlayer( ply, msg )
+	for i = 1, #self._Listeners do
+		self:NotifyPlayer( self._Listeners[i], msg )
 	end
 end
 

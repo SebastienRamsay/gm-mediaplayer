@@ -7,10 +7,16 @@ local IsValid = IsValid
 local cam = cam
 local Start3D2D = cam.Start3D2D
 local End3D2D = cam.End3D2D
+local RealTime = RealTime
+local LocalPlayer = LocalPlayer
+local CursorVisible = vgui.CursorVisible
 
-local FullscreenCvar = MediaPlayer.Cvars.Fullscreen
+-- Distance culling threshold (squared to avoid sqrt)
+local MAX_DRAW_DISTANCE_SQR = 2500 * 2500
 
-MEDIAPLAYER.Enable3DAudio = true
+-- Must match cl_draw.lua fadeout timing
+local InfoDisplayTime = 3
+local InfoFadeTime = 1
 
 function MEDIAPLAYER:NetReadUpdate()
 	local entIndex = net.ReadUInt(16)
@@ -61,15 +67,30 @@ function MEDIAPLAYER:Draw( bDrawingDepth, bDrawingSkybox )
 
 	local ent = self.Entity
 
-	if --bDrawingSkybox or
-			self._isFullscreen or -- Don't draw if we're drawing fullscreen
-			not IsValid(ent) or
+	-- When fullscreen is active, check if HUDPaint is actually rendering.
+	-- If it isn't (e.g. gmod_camera suppresses HUD), fall back to 3D rendering.
+	if self._isFullscreen then
+		if self._hudPaintFired then
+			-- HUDPaint is working, let DrawFullscreen handle it
+			self._hudPaintFired = false
+			return
+		end
+		-- HUDPaint didn't fire since last frame, fall through to 3D rendering
+	end
+
+	if not IsValid(ent) or
 			(ent.IsDormant and ent:IsDormant()) then
+		return
+	end
+
+	-- Distance culling: skip all rendering if player is too far
+	if LocalPlayer():EyePos():DistToSqr(ent:GetPos()) > MAX_DRAW_DISTANCE_SQR then
 		return
 	end
 
 	local media = self:GetMedia()
 	local w, h, pos, ang = self:GetOrientation()
+	if not w then return end
 
 	-- Render scale
 	local rw, rh = w / RenderScale, h / RenderScale
@@ -81,17 +102,24 @@ function MEDIAPLAYER:Draw( bDrawingDepth, bDrawingSkybox )
 			Start3D2D( pos, ang, RenderScale )
 				media:Draw( rw, rh )
 			End3D2D()
+		else
+			Start3D2D( pos, ang, RenderScale )
+				draw.SimpleText( "Unsupported media type", "DermaDefault", rw / 2, rh / 2, color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
+			End3D2D()
 		end
-		-- TODO: else draw 'not yet implemented' screen?
 
-		-- scale based off of height
-		local scale = InfoScale * ( h / BaseInfoHeight )
+		-- Skip the 3D2D pass entirely if media info has fully faded
+		local elapsed = RealTime() - self._LastMediaUpdate
+		if CursorVisible() or elapsed <= InfoDisplayTime + InfoFadeTime then
+			-- scale based off of height
+			local scale = InfoScale * ( h / BaseInfoHeight )
 
-		-- Media info
-		Start3D2D( pos, ang, scale )
-			local iw, ih = w / scale, h / scale
-			self:DrawMediaInfo( media, iw, ih )
-		End3D2D()
+			-- Media info
+			Start3D2D( pos, ang, scale )
+				local iw, ih = w / scale, h / scale
+				self:DrawMediaInfo( media, iw, ih )
+			End3D2D()
+		end
 
 	else
 

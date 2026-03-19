@@ -2,8 +2,6 @@ local PANEL = {}
 PANEL.HistoryWidth = 300
 PANEL.BackgroundColor = Color(22, 22, 22)
 
-local CloseTexture = Material( "theater/close.png" )
-
 AccessorFunc( PANEL, "m_MediaPlayer", "MediaPlayer" )
 
 function PANEL:Init()
@@ -54,12 +52,15 @@ function PANEL:Init()
 	end )
 
 	local requestUrl = MediaPlayer.GetConfigValue( "request.url" )
-	self.Browser:OpenURL( requestUrl )
+	local lang = MediaPlayer.i18n.GetLanguage()
+	self.Browser:OpenURL( requestUrl .. "#lang=" .. lang )
 
 	self.Controls = vgui.Create( "MPHTMLControls", self.BrowserContainer )
 	self.Controls:Dock( TOP )
 	self.Controls:DockPadding( 0, 0, 32, 0 )
 	self.Controls:SetHTML( self.Browser )
+	self.Controls.BorderSize = 0
+	self.Browser._Controls = self.Controls
 	self.Controls.BorderSize = 0
 
 	-- Listen for all mouse press events
@@ -153,15 +154,22 @@ end
 --
 function PANEL:OnVGUIMousePressed( pnl, key )
 	if not IsValid(pnl) then return end
+	if not IsValid(self._Controls) then return end
 
 	if key == MOUSE_4 then
-		pnl:RunJavascript( "history.back();" )
+		self._Controls.Navigating = true
+		self._Controls:HTMLBack()
+	elseif key == MOUSE_5 then
+		self._Controls.Navigating = true
+		self._Controls:HTMLForward()
 	end
 
-	if key == MOUSE_5 then
-		pnl:RunJavascript( "history.forward();" )
-	end
+end
 
+function PANEL:OnKeyCodePressed( key )
+	if key == KEY_ESCAPE then
+		self:Close()
+	end
 end
 
 vgui.Register( "MPRequestFrame", PANEL, "EditablePanel" )

@@ -12,8 +12,8 @@ local FullscreenCvar = MediaPlayer.Cvars.Fullscreen
 
 local function OnFullscreenConVarChanged( name, old, new )
 
-	new = (new == "1.00")
-	old = (old == "1.00")
+	new = tobool(new)
+	old = tobool(old)
 
 	if new ~= old then
 		print("=====================================")
@@ -61,6 +61,15 @@ function MediaPlayer.ToggleFullscreen( targetMP )
 		if not targetMP then
 			return false
 		end
+	else
+		-- targetMP was provided (e.g. context menu). If a different player
+		-- is already fullscreen, exit it first.
+		for _, mp in pairs(MediaPlayer.List) do
+			if mp._isFullscreen and mp ~= targetMP then
+				MediaPlayer.ToggleFullscreen(mp)
+				break
+			end
+		end
 	end
 
 	-- Toggle fullscreen for this specific player
@@ -97,6 +106,9 @@ function MEDIAPLAYER:DrawFullscreen()
 	-- Don't draw if we're not fullscreen
 	if not self._isFullscreen then return end
 
+	-- Signal to Draw() that HUDPaint is firing properly
+	self._hudPaintFired = true
+
 	local w, h = ScrW(), ScrH()
 	local media = self:CurrentMedia()
 
@@ -105,8 +117,9 @@ function MEDIAPLAYER:DrawFullscreen()
 		-- Custom media draw function
 		if media.Draw then
 			media:Draw( w, h )
+		else
+			draw.SimpleText( "Unsupported media type", "DermaDefault", w / 2, h / 2, color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
 		end
-		-- TODO: else draw 'not yet implemented' screen?
 
 		-- Draw media info
 		local succ, err = pcall( self.DrawMediaInfo, self, media, w, h )

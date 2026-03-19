@@ -1,7 +1,7 @@
 AddCSLuaFile "shared.lua"
 include "shared.lua"
 
-local MetadataUrl = "https://api.dailymotion.com/video/%s?fields=id,title,duration,thumbnail_url,status,mode,private"
+local MetadataUrl = "https://api.dailymotion.com/video/%s?fields=id,title,duration,status,mode,private"
 
 local function OnReceiveMetadata( self, callback, body )
 
@@ -17,7 +17,6 @@ local function OnReceiveMetadata( self, callback, body )
 
 	metadata.title		= data.title
 	metadata.duration	= tonumber(data.duration)
-	metadata.thumbnail	= data.thumbnail_url
 
 	self:SetMetadata(metadata, true)
 	MediaPlayer.Metadata:Save(self)
@@ -27,43 +26,21 @@ local function OnReceiveMetadata( self, callback, body )
 end
 
 function SERVICE:GetMetadata( callback )
-	if self._metadata then
-		callback( self._metadata )
+	local cached, found = self:GetCachedMetadata()
+	if found then
+		callback(cached)
 		return
 	end
 
-	local cache = MediaPlayer.Metadata:Query(self)
+	local videoId = self:GetDailymotionVideoId()
+	local apiurl = MetadataUrl:format( videoId )
 
-	if MediaPlayer.DEBUG then
-		print("MediaPlayer.GetMetadata Cache results:")
-		PrintTable(cache or {})
-	end
-
-	if cache then
-
-		local metadata = {}
-		metadata.title = cache.title
-		metadata.duration = tonumber(cache.duration)
-		metadata.thumbnail = cache.thumbnail
-
-		self:SetMetadata(metadata)
-		MediaPlayer.Metadata:Save(self)
-
-		callback(self._metadata)
-
-	else
-
-		local videoId = self:GetDailymotionVideoId()
-		local apiurl = MetadataUrl:format( videoId )
-
-		self:Fetch( apiurl,
-			function( body, length, headers, code )
-				OnReceiveMetadata( self, callback, body )
-			end,
-			function( code )
-				callback(false, "Failed to load Dialymotion [" .. tostring(code) .. "]")
-			end
-		)
-
-	end
+	self:Fetch( apiurl,
+		function( body, length, headers, code )
+			OnReceiveMetadata( self, callback, body )
+		end,
+		function( code )
+			callback(false, "Failed to load Dailymotion [" .. tostring(code) .. "]")
+		end
+	)
 end

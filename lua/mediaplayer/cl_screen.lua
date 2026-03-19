@@ -5,7 +5,9 @@
 local MAX_SCREEN_DISTANCE = 1000
 
 local function getScreenPos( ent, aimVector )
+	if not ent.GetMediaPlayerPosition then return end
 	local w, h, pos, ang = ent:GetMediaPlayerPosition()
+	if not pos then return end
 	local eyePos = LocalPlayer():EyePos()
 
 	if pos:Distance( eyePos ) > MAX_SCREEN_DISTANCE then
@@ -51,7 +53,7 @@ function MediaPlayer.DispatchScreenTrace( func, aimVector )
 
 	for name, mp in pairs( MediaPlayer.List ) do
 		local ent = mp.Entity
-		if IsValid( mp ) and not ent:IsDormant() then
+		if IsValid( mp ) and IsValid( ent ) and not ent:IsDormant() then
 			local x, y = getScreenPos( ent, aimVector )
 			if x and y then
 				func(mp, x, y)
@@ -81,7 +83,7 @@ hook.Add( "GUIMouseReleased", "MediaPlayer.ScreenIntersect", mousePressed )
 local mouseScroll = MediaPlayerUtils.Throttle(function( dt )
 	MediaPlayer.DispatchScreenTrace(function(mp)
 		mp:OnMouseWheeled(dt)
-	end, aimVector)
+	end)
 end, 0.01, { trailing = false })
 
 hook.Add( "ContextMenuCreated", "MediaPlayer.Scroll", function( contextMenu )
@@ -90,15 +92,6 @@ hook.Add( "ContextMenuCreated", "MediaPlayer.Scroll", function( contextMenu )
 		mouseScroll(scrollDelta)
 	end
 end )
-
---[[
-local function checkMouseScroll( ply, cmd )
-	local scrollDelta = cmd:GetMouseWheel()
-	if scrollDelta == 0 then return end
-	mouseScroll(scrollDelta)
-end
-hook.Add( "StartCommand", "MediaPlayer.Scroll", checkMouseScroll )
-]]
 
 --[[---------------------------------------------------------
 	Prevent weapons from firing while the context menu is
@@ -109,7 +102,7 @@ local function isAimingAtScreen()
 	local aimVector = LocalPlayer():GetAimVector()
 	for name, mp in pairs( MediaPlayer.List ) do
 		local ent = mp.Entity
-		if IsValid( mp ) and not ent:IsDormant() then
+		if IsValid( mp ) and IsValid( ent ) and not ent:IsDormant() then
 			local x, y = getScreenPos( ent, aimVector )
 			if x then
 				return true

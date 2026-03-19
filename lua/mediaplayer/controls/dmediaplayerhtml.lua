@@ -230,6 +230,9 @@ function PANEL:OnFinishLoading()
 
 end
 
+function PANEL:OnPlayerReady()
+	-- Override in child panels or services to handle player ready events
+end
 
 --[[---------------------------------------------------------
 	Lua => JavaScript queue
@@ -302,21 +305,16 @@ function PANEL:ConsoleMessage( ... )
 			msg = "*js variable* (" .. type(msg) .. ": " .. tostring(msg) .. ")"
 		end
 
-		-- Run Lua from JavaScript console logging (POTENTIALLY HARMFUL!)
-		--[[if msg:StartWith( "RUNLUA:" ) then
-			local strLua = msg:sub( 8 )
-
-			SELF = self
-			RunString( strLua )
-			SELF = nil
-
-			return
-		end]]
-
 		-- Play a sound from JavaScript console logging
 		if msg:StartWith( "PLAY:" ) then
 			local soundpath = msg:sub( 7 )
 			surface.PlaySound( soundpath )
+			return
+		end
+
+		-- Browser player is ready — invalidate volume cache to force re-push
+		if msg:StartWith( "READY:" ) then
+			self:OnPlayerReady()
 			return
 		end
 
@@ -483,6 +481,14 @@ function PANEL:HandleMouseActions()
 	end
 end
 
+function PANEL:OnRemove()
+	-- Clean up if removed mid-action to prevent stuck screen clicker
+	if self._handlingMouseAction then
+		gui.EnableScreenClicker( false )
+		self._handlingMouseAction = nil
+	end
+end
+
 function PANEL:MoveToCursor( xoffset, yoffset )
 	xoffset = xoffset or 0
 	yoffset = yoffset or 0
@@ -491,4 +497,4 @@ function PANEL:MoveToCursor( xoffset, yoffset )
 	self:SetPos( cx - xoffset, cy - yoffset )
 end
 
-derma.DefineControl( "DMediaPlayerHTML", "", PANEL, "Awesomium" )
+derma.DefineControl( "DMediaPlayerHTML", "", PANEL, "DHTML" )

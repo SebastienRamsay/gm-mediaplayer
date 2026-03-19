@@ -41,7 +41,7 @@ function QUEUE_HEADER:Init()
 	self:SetTall( self.Height )
 
 	self.Label = vgui.Create( "DLabel", self )
-	self.Label:SetText( "NEXT UP" )
+	self.Label:SetText( MediaPlayer.L("mp.ui.next_up") )
 	self.Label:SetFont( "MP.QueueHeader" )
 
 	self.AddVidBtn = vgui.Create( "MP.AddVideoButton", self )
@@ -57,6 +57,7 @@ end
 
 function QUEUE_HEADER:PerformLayout()
 
+	self.Label:SizeToContents()
 	self.Label:CenterVertical()
 	self.Label:AlignLeft( self.Padding )
 
@@ -88,7 +89,7 @@ function ADD_VIDEO_BTN:Init()
 	self:SetPadding( 4 )
 
 	self.BtnLbl:SetFont( "MP.QueueHeader" )
-	self.BtnLbl:SetText( "ADD MEDIA" )
+	self.BtnLbl:SetText( MediaPlayer.L("mp.ui.add_media") )
 	self.BtnLbl:SetTextColor( color_white )
 
 	self:SetIcon( "mp-plus" )
@@ -130,14 +131,45 @@ derma.DefineControl( "MP.AddVideoButton", "", ADD_VIDEO_BTN, "DIconLabeledButton
 
 local QUEUE_LIST = {}
 
+QUEUE_LIST.ScrollbarWidth = 6
+QUEUE_LIST.ScrollbarBgColor = Color( 7, 21, 33, 200 )
+QUEUE_LIST.ScrollbarGripColor = Color( 28, 100, 157, 180 )
+QUEUE_LIST.ScrollbarGripHoverColor = Color( 40, 120, 180, 220 )
+
 function QUEUE_LIST:Init()
 
 	self.BaseClass.Init( self )
 
 	self:SetSpacing( 1 )
-
-	-- TODO: Replace with custom scrollbar
 	self:EnableVerticalScrollbar()
+
+	local vbar = self.VBar
+	if not IsValid( vbar ) then return end
+
+	vbar:SetWide( self.ScrollbarWidth )
+	vbar.Paint = self.PaintScrollbar
+	vbar.btnUp.Paint = function() end
+	vbar.btnDown.Paint = function() end
+	vbar.btnGrip.Paint = self.PaintScrollbarGrip
+
+end
+
+function QUEUE_LIST:PaintScrollbar( w, h )
+
+	surface.SetDrawColor( QUEUE_LIST.ScrollbarBgColor )
+	surface.DrawRect( 0, 0, w, h )
+
+end
+
+function QUEUE_LIST:PaintScrollbarGrip( w, h )
+
+	local col = QUEUE_LIST.ScrollbarGripColor
+
+	if self:IsHovered() then
+		col = QUEUE_LIST.ScrollbarGripHoverColor
+	end
+
+	draw.RoundedBox( 3, 0, 0, w, h, col )
 
 end
 
@@ -164,7 +196,6 @@ function MEDIA_ITEM:Init()
 
 	self.MediaTitle = vgui.Create( "MP.MediaTitle", self )
 	self.MediaTime = vgui.Create( "MP.MediaTime", self )
-	self.FavBtn = vgui.Create( "MP.FavoriteButton", self )
 	self.AddedByLbl = vgui.Create( "MP.AddedBy", self )
 
 	self.BtnList = vgui.Create( "DHorizontalList", self )
@@ -177,8 +208,6 @@ function MEDIA_ITEM:SetMedia( media )
 	self.MediaTitle:SetText( media:Title() )
 	self.MediaTime:SetMedia( media )
 	self.AddedByLbl:SetPlayer( media:GetOwner(), media:OwnerName(), media:OwnerSteamID() )
-
-	self.FavBtn:SetMedia( media )
 
 	hook.Run( MP.EVENTS.UI.SETUP_MEDIA_PANEL, self, media )
 
@@ -223,10 +252,6 @@ function MEDIA_ITEM:PerformLayout()
 	self.MediaTime:AlignLeft( self.HPadding )
 	self.MediaTime:AlignBottom( self.VPadding - 3 )
 
-	self.FavBtn:Hide()
-	self.FavBtn:AlignTop( self.VPadding )
-	self.FavBtn:AlignRight( self.HPadding )
-
 	self.BtnList:InvalidateLayout(true)
 	self.BtnList:AlignBottom( self.VPadding )
 	self.BtnList:AlignRight( self.HPadding )
@@ -238,7 +263,7 @@ function MEDIA_ITEM:PerformLayout()
 	self.AddedByLbl:AlignBottom( self.VPadding )
 	self.AddedByLbl:MoveLeftOf( self.BtnList, 8 )
 
-	local maxTitleWidth = self.FavBtn:GetPos() -
+	local maxTitleWidth = ( w - self.HPadding ) -
 		( self.MediaTitle:GetPos() + 5 )
 
 	if self.MediaTitle:GetWide() > maxTitleWidth then

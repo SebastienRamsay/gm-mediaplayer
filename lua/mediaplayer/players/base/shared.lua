@@ -1,5 +1,9 @@
 local MediaPlayer = MediaPlayer
 
+local Audio3DCvar = MediaPlayer.Cvars.Audio3D
+local ProximityMinCvar = MediaPlayer.Cvars.ProximityMin
+local ProximityMaxCvar = MediaPlayer.Cvars.ProximityMax
+
 local HasFocus = system.HasFocus
 local MuteUnfocused = MediaPlayer.Cvars.MuteUnfocused
 local CeilPower2 = MediaPlayerUtils.CeilPower2
@@ -27,7 +31,6 @@ NUM_MP_STATE = 3
 
 include "sh_snapshot.lua"
 
---
 -- Initialize the media player object.
 --
 function MEDIAPLAYER:Init(params)
@@ -37,12 +40,16 @@ function MEDIAPLAYER:Init(params)
 
 	self._State = MP_STATE_ENDED -- waiting for new media
 
+	self._QueueRepeat = false -- should player repeat?
+	self._QueueShuffle = false -- should player shuffle?
+	self._QueueLocked = false -- is played locked?
+
 	if SERVER then
 
 		self._TransmitState = TRANSMIT_ALWAYS
 		self._Listeners = {}
-
-		self._Location = -1
+		self._ListenerSet = {}  -- fast lookup set for listeners
+		self._Voteskip = MediaPlayer.VoteskipManager:New(self)
 
 	else
 
@@ -53,8 +60,6 @@ function MEDIAPLAYER:Init(params)
 
 	end
 
-	-- Merge in any passed in params
-	-- table.Merge(self, params or {})
 end
 
 --
@@ -156,15 +161,6 @@ function MEDIAPLAYER:GetPos()
 	return self._pos
 end
 
---
--- Get the media player's location ID.
---
--- @return Number	Media player's location ID
---
-function MEDIAPLAYER:GetLocation()
-	return self._Location
-end
-
 function MEDIAPLAYER:GetOwner()
 	return self._Owner
 end
@@ -219,25 +215,44 @@ function MEDIAPLAYER:Think()
 	end
 
 	if CLIENT and validMedia then
-		media:Sync()
+
+		-- Reset caches when media object changes
+		if media ~= self._cachedVolumeMedia then
+			self._cachedVolumeMedia = media
+			self._cachedVolume = nil
+			self._nextSyncTime = nil
+		end
+
+		local now = RealTime()
+		if not self._nextSyncTime or now >= self._nextSyncTime then
+			media:Sync()
+			self._nextSyncTime = now + 0.3
+		end
 
 		local volume
 
-		-- TODO: add a GAMEMODE hook to determine if sound should be muted
-		if not HasFocus() and MuteUnfocused:GetBool() then
+		-- Allow gamemodes/addons to force-mute a media player.
+		-- Return true from the hook to mute, false/nil to use default behavior.
+		if hook.Run( "MediaPlayerShouldMute", self, media ) then
+			volume = 0
+		elseif not HasFocus() and MuteUnfocused:GetBool() then
 			volume = 0
 		else
 			local baseVolume = MediaPlayer.Volume()
 
-			if MediaPlayer.Cvars.Audio3D:GetBool() then
+			if Audio3DCvar:GetBool() then
 				local localPlayer = LocalPlayer()
 
 				local playerPos = localPlayer:GetPos()
 				local entityPos = self:GetPos()
 				local distance = playerPos:Distance(entityPos)
 
-				local minDistance = MediaPlayer.Cvars.ProximityMin:GetFloat()
-				local maxDistance = MediaPlayer.Cvars.ProximityMax:GetFloat()
+				local minDistance = ProximityMinCvar:GetFloat()
+				local maxDistance = ProximityMaxCvar:GetFloat()
+
+				if minDistance >= maxDistance then
+					maxDistance = minDistance + 1
+				end
 
 				local falloff = 1 - ((distance - minDistance) / (maxDistance - minDistance))
 				volume = math_Clamp(baseVolume * falloff, 0, 1)
@@ -246,7 +261,11 @@ function MEDIAPLAYER:Think()
 			end
 		end
 
-		media:Volume( volume )
+		-- Only push volume to media when it actually changes
+		if volume ~= self._cachedVolume then
+			media:Volume( volume )
+			self._cachedVolume = volume
+		end
 	end
 
 end
@@ -277,7 +296,6 @@ end
 
 --
 -- Get the media queue.
--- TODO: Remove this as it should only be accessed internally?
 --
 -- @return table	Media queue.
 --
@@ -431,6 +449,9 @@ function MEDIAPLAYER:OnMediaFinished( media )
 
 	if SERVER then
 		self:SetPlayerState( MP_STATE_ENDED )
+		if self._Voteskip then
+			self._Voteskip:Clear()
+		end
 	end
 
 	self._Media = nil
@@ -459,14 +480,23 @@ function MEDIAPLAYER:Remove()
 	MediaPlayer.Destroy( self )
 	self._removed = true
 
-	if SERVER then
+if SERVER then
 
-		-- Remove all listeners
-		for _, ply in pairs( self._Listeners ) do
-			-- TODO: it's probably better not to send individual net messages
-			-- for each player removed.
-			self:RemoveListener( ply )
+		-- Batch-notify all listeners of removal in a single net message
+		local listeners = self._Listeners
+		if #listeners > 0 then
+			net.Start( "MEDIAPLAYER.Remove" )
+				net.WriteString( self:GetId() )
+			net.Send( listeners )
+
+			-- Fire hook for each removed listener
+			for _, ply in ipairs( listeners ) do
+				hook.Run( "MediaPlayerRemoveListener", self, ply )
+			end
 		end
+
+		self._Listeners = {}
+		self._ListenerSet = {}
 
 	else
 

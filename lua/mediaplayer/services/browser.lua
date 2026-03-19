@@ -14,6 +14,7 @@ if CLIENT then
 		local resolution = MediaPlayer.Resolution()
 		local w = resolution * 16 / 9
 		local h = resolution
+		local mp = nil
 
 		if IsValid(self.Entity) then
 			-- normalize resolution to the entity screen size
@@ -21,9 +22,10 @@ if CLIENT then
 			local entwidth = config.width or w
 			local entheight = config.height or resolution
 			w = resolution * (entwidth / entheight)
+			mp = self.Entity:GetMediaPlayer()
 		end
 
-		MediaPlayer.SetBrowserSize( browser, w, h )
+		MediaPlayer.SetBrowserSize( browser, w, h, mp )
 
 		-- Implement this in a child service
 	end
@@ -49,6 +51,7 @@ if CLIENT then
 		BaseClass.Play( self )
 
 		if self.Browser and IsValid(self.Browser) then
+			self:HookBrowserReady( self.Browser )
 			self:OnBrowserReady( self.Browser )
 		else
 
@@ -63,11 +66,38 @@ if CLIENT then
 				end
 
 				self.Browser = panel
+				self:HookBrowserReady( panel )
 				self:OnBrowserReady( panel )
 
 			end)
 		end
 
+	end
+
+	function SERVICE:HookBrowserReady( browser )
+		if browser._mpReadyHooked then return end
+		browser._mpReadyHooked = true
+
+		local svc = self
+		local origConsoleMessage = browser.ConsoleMessage
+
+		function browser:ConsoleMessage( ... )
+			local args = { ... }
+			local msg = args[1]
+
+			if isstring(msg) and msg:StartWith("READY:") then
+				if IsValid(svc.Entity) then
+					local mp = svc.Entity:GetMediaPlayer()
+					if mp then
+						mp._cachedVolume = nil
+					end
+				end
+			end
+
+			if origConsoleMessage then
+				return origConsoleMessage(self, ...)
+			end
+		end
 	end
 
 	function SERVICE:Stop()

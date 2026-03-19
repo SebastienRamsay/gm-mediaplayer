@@ -1,5 +1,3 @@
-local ceil = math.ceil
-
 local surface = surface
 local color_white = color_white
 
@@ -70,15 +68,15 @@ function PANEL:PerformLayout()
 	local ActivePanel = ActiveTab:GetPanel()
 
 	local numItems = #self.Items
-	local tabWidth = ceil(self:GetWide() / numItems)
+	local tabWidth = math.floor(self:GetWide() / numItems)
 
 	local tab
 
 	for k, v in pairs( self.Items ) do
-
 		tab = v.Tab
 
-		tab:SetSize( tabWidth, self.TabHeight )
+		local w = (k == numItems) and (self:GetWide() - (numItems - 1) * tabWidth) or tabWidth
+		tab:SetSize( w, self.TabHeight )
 		tab:SetPos( (k-1) * tabWidth )
 
 		-- Handle tab panel visibility
@@ -112,7 +110,8 @@ local SIDEBAR_TAB = {}
 surface.CreateFont( "MP.TabTitle", {
 	font = "Roboto Regular",
 	size = 16,
-	weight = 400
+	weight = 400,
+	extended = true
 } )
 
 SIDEBAR_TAB.BgColor = Color( 28, 100, 157 )
@@ -144,9 +143,6 @@ end
 function SIDEBAR_TAB:ApplySchemeSettings()
 
 	self:SetTextInset( 0, 0 )
-
-	-- TODO: this errors as of version 2015.03.09
-	-- DLabel.ApplySchemeSettings( self )
 
 end
 

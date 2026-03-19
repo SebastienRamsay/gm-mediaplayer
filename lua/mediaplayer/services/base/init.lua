@@ -1,8 +1,6 @@
 AddCSLuaFile "shared.lua"
 include "shared.lua"
 
-local MaxTitleLength = 128
-
 function SERVICE:SetOwner( ply )
 	self._Owner = ply
 	self._OwnerName = ply:Nick()
@@ -22,6 +20,37 @@ function SERVICE:GetMetadata( callback )
 
 	callback(self._metadata)
 
+end
+
+---
+-- Shared cache-check helper for all services.
+-- Returns (metadata, found).
+--
+function SERVICE:GetCachedMetadata()
+	if self._metadata then
+		return self._metadata, true
+	end
+
+	local cache = MediaPlayer.Metadata:Query(self)
+
+	if MediaPlayer.DEBUG then
+		print("MediaPlayer.GetMetadata Cache results:")
+		PrintTable(cache or {})
+	end
+
+	if cache then
+		local metadata = {}
+		metadata.title = cache.title
+		metadata.duration = tonumber(cache.duration)
+		metadata.thumbnail = cache.thumbnail or ""
+
+		self:SetMetadata(metadata)
+		MediaPlayer.Metadata:Save(self)
+
+		return self._metadata, true
+	end
+
+	return nil, false
 end
 
 local HttpHeaders = {
