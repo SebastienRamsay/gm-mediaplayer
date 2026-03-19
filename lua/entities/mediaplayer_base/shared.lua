@@ -33,7 +33,7 @@ function ENT:Initialize()
 		-- Network media player ID
 		self:SetMediaPlayerID( mp:GetId() )
 
-		timer.Simple(0, function()
+		timer.Simple(1, function()
 			if not IsValid(self) then return end
 			if self.CPPIGetOwner and self:CPPIGetOwner() and self:CPPIGetOwner():IsPlayer() then
 				-- Attach mixin methods to self
